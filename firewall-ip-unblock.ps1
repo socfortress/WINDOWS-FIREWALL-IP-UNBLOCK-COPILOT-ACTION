@@ -6,8 +6,6 @@ param(
   [string]$LogPath="$env:TEMP\UnblockIP-script.log",
   [string]$ARLog='C:\Program Files (x86)\ossec-agent\active-response\active-responses.log'
 )
-
-# Map Velociraptor arguments if passed
 if ($Arg1 -and -not $TargetIP)   { $TargetIP = $Arg1 }
 if ($Arg2 -and -not $Direction)  { $Direction = $Arg2 }
 if ($Arg3 -and -not $MaxWaitSeconds) { $MaxWaitSeconds = [int]$Arg3 }
@@ -73,8 +71,9 @@ try {
     rule_name=$RuleName
     status=$status
   }
-  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Append -Encoding ascii -Width 2000
-  Write-Log "JSON appended to $ARLog" 'INFO'
+  # Overwrite the active-responses.log instead of appending
+  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Encoding ascii -Width 2000
+  Write-Log "JSON written to $ARLog" 'INFO'
 } catch {
   Write-Log $_.Exception.Message 'ERROR'
   $logObj=[pscustomobject]@{
@@ -84,7 +83,8 @@ try {
     status="error"
     error=$_.Exception.Message
   }
-  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Append -Encoding ascii -Width 2000
+  # Overwrite the log even in error state
+  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Encoding ascii -Width 2000
 } finally {
   $dur=[int]((Get-Date)-$runStart).TotalSeconds
   Write-Log "=== SCRIPT END : duration ${dur}s ==="
