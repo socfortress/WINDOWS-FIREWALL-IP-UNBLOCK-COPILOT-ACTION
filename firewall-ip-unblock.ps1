@@ -12,9 +12,6 @@ if ($Arg1 -and -not $TargetIP)   { $TargetIP = $Arg1 }
 if ($Arg2 -and -not $Direction)  { $Direction = $Arg2 }
 if ($Arg3 -and -not $MaxWaitSeconds) { $MaxWaitSeconds = [int]$Arg3 }
 
-# Clear the active-responses.log each run (overwrite mode)
-if (Test-Path $ARLog) { Clear-Content -Path $ARLog -Force }
-
 $ErrorActionPreference='Stop'
 $HostName=$env:COMPUTERNAME
 $LogMaxKB=100
@@ -76,8 +73,8 @@ try {
     rule_name=$RuleName
     status=$status
   }
-  # Overwrite the log with only this run’s JSON
-  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Encoding ascii -Width 2000
+  # Overwrite log safely
+  $logObj | ConvertTo-Json -Compress | Set-Content -Path $ARLog -Encoding ascii
   Write-Log "JSON written to $ARLog" 'INFO'
 } catch {
   Write-Log $_.Exception.Message 'ERROR'
@@ -89,7 +86,7 @@ try {
     error=$_.Exception.Message
   }
   # Overwrite log even on error
-  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Encoding ascii -Width 2000
+  $logObj | ConvertTo-Json -Compress | Set-Content -Path $ARLog -Encoding ascii
 } finally {
   $dur=[int]((Get-Date)-$runStart).TotalSeconds
   Write-Log "=== SCRIPT END : duration ${dur}s ==="
