@@ -1,5 +1,6 @@
 [CmdletBinding()]
 param(
+  [string]$TargetIP,
   [string]$Direction='Inbound',
   [int]$MaxWaitSeconds=300,
   [string]$LogPath="$env:TEMP\UnblockIP-script.log",
@@ -11,6 +12,9 @@ $HostName=$env:COMPUTERNAME
 $LogMaxKB=100
 $LogKeep=5
 $runStart=Get-Date
+
+if (-not $TargetIP) { throw "TargetIP is required (no interactive input allowed)" }
+if ($TargetIP -notmatch '^(\d{1,3}\.){3}\d{1,3}$'){ throw "Invalid IPv4 address format: $TargetIP" }
 
 function Write-Log {
   param([string]$Message,[ValidateSet('INFO','WARN','ERROR','DEBUG')]$Level='INFO')
@@ -41,9 +45,6 @@ Rotate-Log
 Write-Log "=== SCRIPT START : Unblock IP ==="
 
 try {
-  $TargetIP=Read-Host "Enter IP address to unblock"
-  if($TargetIP -notmatch '^(\d{1,3}\.){3}\d{1,3}$'){throw "Invalid IPv4 address format: $TargetIP"}
-
   $RuleName="Block_$($TargetIP.Replace('.','_'))"
   Write-Log "Target IP: $TargetIP"
   Write-Log "Rule to remove: $RuleName"
