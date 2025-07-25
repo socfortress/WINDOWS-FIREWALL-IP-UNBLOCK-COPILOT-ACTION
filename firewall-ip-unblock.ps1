@@ -6,6 +6,8 @@ param(
   [string]$LogPath="$env:TEMP\UnblockIP-script.log",
   [string]$ARLog='C:\Program Files (x86)\ossec-agent\active-response\active-responses.log'
 )
+
+# Map Velociraptor arguments if passed
 if ($Arg1 -and -not $TargetIP)   { $TargetIP = $Arg1 }
 if ($Arg2 -and -not $Direction)  { $Direction = $Arg2 }
 if ($Arg3 -and -not $MaxWaitSeconds) { $MaxWaitSeconds = [int]$Arg3 }
@@ -71,7 +73,12 @@ try {
     rule_name=$RuleName
     status=$status
   }
-  $logObj | ConvertTo-Json -Compress | Set-Content -Path $ARLog -Encoding ascii
+
+  # Write JSON to a temporary file first, then atomically replace active-responses.log
+  $tempLog = "$env:TEMP\active-response-temp.log"
+  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $tempLog -Encoding ascii
+  Move-Item -Path $tempLog -Destination $ARLog -Force
+
   Write-Log "JSON written to $ARLog" 'INFO'
 } catch {
   Write-Log $_.Exception.Message 'ERROR'
@@ -82,7 +89,11 @@ try {
     status="error"
     error=$_.Exception.Message
   }
-  $logObj | ConvertTo-Json -Compress | Set-Content -Path $ARLog -Encoding ascii
+
+  # Even on error, use atomic replace to ensure the log is updated cleanly
+  $tempLog = "$env:TEMP\active-response-temp.log"
+  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $tempLog -Encoding ascii
+  Move-Item -Path $tempLog -Destination $ARLog -Force
 } finally {
   $dur=[int]((Get-Date)-$runStart).TotalSeconds
   Write-Log "=== SCRIPT END : duration ${dur}s ==="
