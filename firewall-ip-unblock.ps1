@@ -71,11 +71,8 @@ try {
     rule_name=$RuleName
     status=$status
   }
-  $tempLog = "$env:TEMP\active-response-temp.log"
-  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $tempLog -Encoding ascii
-  Move-Item -Path $tempLog -Destination $ARLog -Force
-
-  Write-Log "JSON written to $ARLog" 'INFO'
+  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Append -Encoding ascii -Width 2000
+  Write-Log "JSON appended to $ARLog" 'INFO'
 } catch {
   Write-Log $_.Exception.Message 'ERROR'
   $logObj=[pscustomobject]@{
@@ -85,9 +82,7 @@ try {
     status="error"
     error=$_.Exception.Message
   }
-  $tempLog = "$env:TEMP\active-response-temp.log"
-  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $tempLog -Encoding ascii
-  Move-Item -Path $tempLog -Destination $ARLog -Force
+  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Append -Encoding ascii -Width 2000
 } finally {
   $dur=[int]((Get-Date)-$runStart).TotalSeconds
   Write-Log "=== SCRIPT END : duration ${dur}s ==="
