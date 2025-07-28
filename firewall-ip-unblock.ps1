@@ -61,7 +61,6 @@ try {
     Write-Log "Firewall rule '$RuleName' not found" 'WARN'
     $status="not_found"
   }
-
   $logObj=[pscustomobject]@{
     timestamp=(Get-Date).ToString('o')
     host=$HostName
@@ -71,9 +70,19 @@ try {
     rule_name=$RuleName
     status=$status
   }
-  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Append -Encoding ascii -Width 2000
-  Write-Log "JSON appended to $ARLog" 'INFO'
-} catch {
+  $json = $logObj | ConvertTo-Json -Compress -Depth 3
+  $tempFile = "$env:TEMP\arlog.tmp"
+  Set-Content -Path $tempFile -Value $json -Encoding ascii -Force
+
+  try {
+    Move-Item -Path $tempFile -Destination $ARLog -Force
+    Write-Log "Log file replaced at $ARLog" 'INFO'
+  } catch {
+    Move-Item -Path $tempFile -Destination "$ARLog.new" -Force
+    Write-Log "Log locked, wrote results to $ARLog.new" 'WARN'
+  }
+}
+catch {
   Write-Log $_.Exception.Message 'ERROR'
   $logObj=[pscustomobject]@{
     timestamp=(Get-Date).ToString('o')
@@ -82,8 +91,12 @@ try {
     status="error"
     error=$_.Exception.Message
   }
-  $logObj | ConvertTo-Json -Compress | Out-File -FilePath $ARLog -Append -Encoding ascii -Width 2000
-} finally {
+  $json = $logObj | ConvertTo-Json -Compress -Depth 3
+  $fallback = "$ARLog.new"
+  Set-Content -Path $fallback -Value $json -Encoding ascii -Force
+  Write-Log "Error logged to $fallback" 'WARN'
+}
+finally {
   $dur=[int]((Get-Date)-$runStart).TotalSeconds
   Write-Log "=== SCRIPT END : duration ${dur}s ==="
 }
