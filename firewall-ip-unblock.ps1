@@ -61,6 +61,8 @@ try {
     Write-Log "Firewall rule '$RuleName' not found" 'WARN'
     $status="not_found"
   }
+
+  # JSON object with added copilot_soar field
   $logObj=[pscustomobject]@{
     timestamp=(Get-Date).ToString('o')
     host=$HostName
@@ -69,6 +71,7 @@ try {
     direction=$Direction
     rule_name=$RuleName
     status=$status
+    copilot_soar=$true
   }
   $json = $logObj | ConvertTo-Json -Compress -Depth 3
   $tempFile = "$env:TEMP\arlog.tmp"
@@ -90,6 +93,7 @@ catch {
     action="unblock_ip"
     status="error"
     error=$_.Exception.Message
+    copilot_soar=$true
   }
   $json = $logObj | ConvertTo-Json -Compress -Depth 3
   $fallback = "$ARLog.new"
