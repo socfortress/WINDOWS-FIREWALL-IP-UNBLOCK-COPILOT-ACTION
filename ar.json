@@ -1,0 +1,46 @@
+{
+  "active_response_name": "WINDOWS-FIREWALL-IP-UNBLOCK-ACTIVERESPONSE",
+  "description": "Removes a Windows Defender Firewall rule created to block a specific IPv4 address. Validates IPv4 format, checks for the existence of the rule before attempting deletion, and reports status as unblocked, not found, or error. Outputs a single NDJSON record and writes atomically to the Active Response log with .new fallback. Requires administrative privileges.",
+  "technology": "Windows",
+  "icon": "windows",
+  "script_parameters": [
+    {
+      "name": "TargetIP",
+      "type": "string",
+      "required": true,
+      "description": "IPv4 address to unblock (e.g., 203.0.113.10)."
+    },
+    {
+      "name": "Direction",
+      "type": "string",
+      "required": false,
+      "description": "Firewall rule direction: Inbound or Outbound. Default should match the original block rule.",
+      "default": "Inbound"
+    },
+    {
+      "name": "MaxWaitSeconds",
+      "type": "integer",
+      "required": false,
+      "description": "Optional maximum wait/timeout budget for operations.",
+      "default": 300
+    },
+    {
+      "name": "LogPath",
+      "type": "string",
+      "required": false,
+      "description": "Path to the rotating human-readable script log.",
+      "default": "%TEMP%/UnblockIP-script.log"
+    },
+    {
+      "name": "ARLog",
+      "type": "string",
+      "required": false,
+      "description": "Active Response NDJSON output path (atomic overwrite; falls back to .new if locked).",
+      "default": "C:\\Program Files (x86)\\ossec-agent\\active-response\\active-responses.log"
+    }
+  ],
+  "repo_url": "https://github.com/socfortress/WINDOWS-FIREWALL-IP-UNBLOCK-ACTIVERESPONSE",
+  "script_name": "firewall-ip-unblock.ps1",
+  "version": "1.0.0",
+  "last_updated": "2025-08-22T00:00:00Z"
+}
