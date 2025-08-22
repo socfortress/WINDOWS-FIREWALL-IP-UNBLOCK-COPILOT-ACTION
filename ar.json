@@ -1,5 +1,5 @@
 {
-  "active_response_name": "WINDOWS-FIREWALL-IP-UNBLOCK-ACTIVERESPONSE",
+  "copilot_action_name": "WINDOWS-FIREWALL-IP-UNBLOCK-ACTIVERESPONSE",
   "description": "Removes a Windows Defender Firewall rule created to block a specific IPv4 address. Validates IPv4 format, checks for the existence of the rule before attempting deletion, and reports status as unblocked, not found, or error. Outputs a single NDJSON record and writes atomically to the Active Response log with .new fallback. Requires administrative privileges.",
   "technology": "Windows",
   "icon": "windows",
