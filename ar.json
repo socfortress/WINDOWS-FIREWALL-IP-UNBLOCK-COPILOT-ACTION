@@ -8,21 +8,24 @@
       "name": "TargetIP",
       "type": "string",
       "required": true,
-      "description": "IPv4 address to unblock (e.g., 203.0.113.10)."
+      "description": "IPv4 address to unblock (e.g., 203.0.113.10).",
+      "arg_position": "1"
     },
     {
       "name": "Direction",
       "type": "string",
       "required": false,
       "description": "Firewall rule direction: Inbound or Outbound. Default should match the original block rule.",
-      "default": "Inbound"
+      "default": "Inbound",
+      "arg_position": "2"
     },
     {
       "name": "MaxWaitSeconds",
       "type": "integer",
       "required": false,
       "description": "Optional maximum wait/timeout budget for operations.",
-      "default": 300
+      "default": 300,
+      "arg_position": "3"
     },
     {
       "name": "LogPath",
