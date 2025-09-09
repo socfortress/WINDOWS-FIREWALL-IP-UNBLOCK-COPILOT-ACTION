@@ -1,6 +1,6 @@
 {
   "copilot_action_name": "WINDOWS-FIREWALL-IP-UNBLOCK-COPILOT-ACTION",
-  "description": "Removes a Windows Defender Firewall rule created to block a specific IPv4 address. Validates IPv4 format, checks for the existence of the rule before attempting deletion, and reports status as unblocked, not found, or error. Outputs a single NDJSON record and writes atomically to the Active Response log with .new fallback. Requires administrative privileges.",
+  "description": "Removes a Windows Defender Firewall rule created to block a specific IPv4 address. Validates IPv4 format, searches by common rule names and by address filters, removes matches, and reports status as unblocked, partial, not_found, or error. Outputs NDJSON and writes atomically with .new fallback. Requires administrative privileges.",
   "technology": "Windows",
   "icon": "windows",
   "script_parameters": [
@@ -15,34 +15,12 @@
       "name": "Direction",
       "type": "string",
       "required": false,
-      "description": "Firewall rule direction: Inbound or Outbound. Default should match the original block rule.",
+      "description": "Firewall rule direction to target: Inbound or Outbound. Default: Inbound.",
       "default": "Inbound",
       "arg_position": "2"
     },
-    {
-      "name": "MaxWaitSeconds",
-      "type": "integer",
-      "required": false,
-      "description": "Optional maximum wait/timeout budget for operations.",
-      "default": 300,
-      "arg_position": "3"
-    },
-    {
-      "name": "LogPath",
-      "type": "string",
-      "required": false,
-      "description": "Path to the rotating human-readable script log.",
-      "default": "%TEMP%/UnblockIP-script.log"
-    },
-    {
-      "name": "ARLog",
-      "type": "string",
-      "required": false,
-      "description": "Active Response NDJSON output path (atomic overwrite; falls back to .new if locked).",
-      "default": "C:\\Program Files (x86)\\ossec-agent\\active-response\\active-responses.log"
-    }
   ],
-  "repo_url": "https://raw.githubusercontent.com/socfortress/WINDOWS-FIREWALL-IP-UNBLOCK-COPILOT-ACTION/refs/heads/main",
+  "repo_url": "https://raw.githubusercontent.com/socfortress/WINDOWS-FIREWALL-IP-UNBLOCK-COPILOT-ACTION/refs/heads/main/firewall-ip-unblock.ps1",
   "script_name": "firewall-ip-unblock.ps1",
   "version": "1.0.0",
   "last_updated": "2025-08-22T00:00:00Z"
