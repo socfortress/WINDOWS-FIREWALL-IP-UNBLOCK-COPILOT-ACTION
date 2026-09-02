@@ -62,121 +62,339 @@ $lines = @()
 try {
   $ipToken = ($TargetIP -replace '\.','_')
   $nameBase = "Block_$ipToken"
-  $candidateNames = @($nameBase, "${nameBase}_In", "${nameBase}_Out")
 
-  $byName = @()
-  foreach ($n in $candidateNames) {
-    $r = Get-NetFirewallRule -DisplayName $n -ErrorAction SilentlyContinue
-    if ($r) { $byName += $r }
+  # Normalize requested direction
+  if ($Direction -match '^Inbound$') {
+      $Direction = 'Inbound'
+      $LegacyDirectionSuffix = 'In'
+      $DirectionValue = 1
+  }
+  elseif ($Direction -match '^Outbound$') {
+      $Direction = 'Outbound'
+      $LegacyDirectionSuffix = 'Out'
+      $DirectionValue = 2
+  }
+  else {
+      throw "Invalid Direction '$Direction'. Expected Inbound or Outbound."
   }
 
-  $byAddr = @()
-  $allRules = Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Action -eq 'Block' }
-  foreach ($r in @($allRules)) {
-    try {
-      $afs = @( Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $r -ErrorAction SilentlyContinue )
-      if (-not $afs) { continue }
-      $addrList = @()
-      foreach ($af in $afs) {
-        if ($af.RemoteAddress) { $addrList += @($af.RemoteAddress) }
-        if ($af.LocalAddress)  { $addrList += @($af.LocalAddress)  }
-      }
-      if ($addrList -contains $TargetIP) {
-        $byAddr += $r
-      }
-    } catch { }
+  # Support:
+  #   Block_8_8_8_8              (old format)
+  #   Block_8_8_8_8_In           (legacy format used by current Unblock script)
+  #   Block_8_8_8_8_Out
+  #   Block_8_8_8_8_Inbound      (current Block Action)
+  #   Block_8_8_8_8_Outbound
+  $candidateNames = @(
+      $nameBase,
+      "${nameBase}_${LegacyDirectionSuffix}",
+      "${nameBase}_${Direction}"
+  )
+
+  $UseNetSecurity = [bool](Get-Command Get-NetFirewallRule -ErrorAction SilentlyContinue)
+
+  if (-not $UseNetSecurity) {
+      $FirewallPolicy = New-Object -ComObject HNetCfg.FwPolicy2
   }
 
-  $matches = @()
-  if ($byName) { $matches += $byName }
-  if ($byAddr) { $matches += $byAddr }
-  $matchMap = @{}
-  foreach ($r in $matches) { if ($r -and -not $matchMap.ContainsKey($r.Name)) { $matchMap[$r.Name] = $r } }
-  $matches = $matchMap.Values
+  function Find-MatchingBlockRules {
+
+      $found = @()
+
+      if ($UseNetSecurity) {
+
+          # Match known rule names first
+          foreach ($n in $candidateNames) {
+
+              $rules = @(Get-NetFirewallRule -DisplayName $n -ErrorAction SilentlyContinue)
+
+              foreach ($r in $rules) {
+
+                  if (
+                      "$($r.Action)" -eq 'Block' -and
+                      "$($r.Direction)" -eq $Direction
+                  ) {
+                      $found += $r
+                  }
+              }
+          }
+
+          # Also find matching block rules by IP
+          $allRules = Get-NetFirewallRule -ErrorAction SilentlyContinue |
+              Where-Object {
+                  $_.Action -eq 'Block' -and
+                  "$($_.Direction)" -eq $Direction
+              }
+
+          foreach ($r in @($allRules)) {
+
+              try {
+
+                  $afs = @(
+                      Get-NetFirewallAddressFilter `
+                          -AssociatedNetFirewallRule $r `
+                          -ErrorAction SilentlyContinue
+                  )
+
+                  if (-not $afs) {
+                      continue
+                  }
+
+                  $addrList = @()
+
+                  foreach ($af in $afs) {
+
+                      if ($af.RemoteAddress) {
+                          $addrList += @($af.RemoteAddress)
+                      }
+
+                      if ($af.LocalAddress) {
+                          $addrList += @($af.LocalAddress)
+                      }
+                  }
+
+                  if ($addrList -contains $TargetIP) {
+                      $found += $r
+                  }
+
+              }
+              catch {
+              }
+          }
+
+      }
+      else {
+
+          # Windows Server 2008 R2 / systems without NetSecurity
+
+          # Match known rule names first
+          foreach ($n in $candidateNames) {
+
+              $r = $null
+
+              try {
+                  $r = $FirewallPolicy.Rules.Item($n)
+              }
+              catch {
+                  $r = $null
+              }
+
+              if (
+                  $r -and
+                  $r.Action -eq 0 -and
+                  $r.Direction -eq $DirectionValue
+              ) {
+                  $found += $r
+              }
+          }
+
+          # Also search all firewall rules by IP
+          foreach ($r in $FirewallPolicy.Rules) {
+
+              try {
+
+                  # NET_FW_ACTION_BLOCK = 0
+                  if ($r.Action -ne 0) {
+                      continue
+                  }
+
+                  # 1 = Inbound / 2 = Outbound
+                  if ($r.Direction -ne $DirectionValue) {
+                      continue
+                  }
+
+                  $addrList = @()
+
+                  if ($r.RemoteAddresses) {
+                      $addrList += @(
+                          $r.RemoteAddresses -split ',' |
+                              ForEach-Object { $_.Trim() }
+                      )
+                  }
+
+                  if ($r.LocalAddresses) {
+                      $addrList += @(
+                          $r.LocalAddresses -split ',' |
+                              ForEach-Object { $_.Trim() }
+                      )
+                  }
+
+                  if ($addrList -contains $TargetIP) {
+                      $found += $r
+                  }
+
+              }
+              catch {
+              }
+          }
+      }
+
+      # Deduplicate results by rule name
+      $map = @{}
+
+      foreach ($r in @($found)) {
+
+          if ($r -and $r.Name -and -not $map.ContainsKey($r.Name)) {
+              $map[$r.Name] = $r
+          }
+      }
+
+      return @($map.Values)
+  }
+
+
+  # ----------------------------------------------------------------------
+  # Find matching rules
+  # ----------------------------------------------------------------------
+
+  $matches = @(Find-MatchingBlockRules)
+
+
+  # ----------------------------------------------------------------------
+  # Log matches
+  # ----------------------------------------------------------------------
 
   foreach ($r in @($matches)) {
-    $lines += ([pscustomobject]@{
+
+      if ($UseNetSecurity) {
+
+          $displayName = $r.DisplayName
+          $ruleDirection = "$($r.Direction)"
+          $ruleProfile = "$($r.Profile)"
+          $ruleAction = "$($r.Action)"
+
+      }
+      else {
+
+          $displayName = $r.Name
+
+          $ruleDirection = if ($r.Direction -eq 1) {
+              'Inbound'
+          }
+          elseif ($r.Direction -eq 2) {
+              'Outbound'
+          }
+          else {
+              "$($r.Direction)"
+          }
+
+          $ruleProfile = "$($r.Profiles)"
+
+          $ruleAction = if ($r.Action -eq 0) {
+              'Block'
+          }
+          elseif ($r.Action -eq 1) {
+              'Allow'
+          }
+          else {
+              "$($r.Action)"
+          }
+      }
+
+      $lines += ([pscustomobject]@{
+          timestamp      = $ts
+          host           = $HostName
+          action         = 'unblock_ip'
+          copilot_action = $true
+          type           = 'match'
+          display_name   = $displayName
+          name           = $r.Name
+          direction      = $ruleDirection
+          profile        = $ruleProfile
+          enabled        = [bool]$r.Enabled
+          action_effect  = $ruleAction
+      } | ConvertTo-Json -Compress -Depth 6)
+  }
+
+
+  # ----------------------------------------------------------------------
+  # Remove matching rules
+  # ----------------------------------------------------------------------
+
+  $removedOk = 0
+  $removedFail = 0
+
+  foreach ($r in @($matches)) {
+
+      try {
+
+          if ($UseNetSecurity) {
+
+              if ($r.Name) {
+                  Remove-NetFirewallRule -Name $r.Name -ErrorAction Stop
+              }
+              else {
+                  Remove-NetFirewallRule -DisplayName $r.DisplayName -ErrorAction Stop
+              }
+
+          }
+          else {
+
+              $FirewallPolicy.Rules.Remove($r.Name)
+          }
+
+          $removedOk++
+
+          $displayName = if ($UseNetSecurity) {
+              $r.DisplayName
+          }
+          else {
+              $r.Name
+          }
+
+          $lines += ([pscustomobject]@{
+              timestamp      = $ts
+              host           = $HostName
+              action         = 'unblock_ip'
+              copilot_action = $true
+              type           = 'rule_removed'
+              display_name   = $displayName
+              name           = $r.Name
+          } | ConvertTo-Json -Compress -Depth 5)
+
+      }
+      catch {
+
+          $removedFail++
+
+          $displayName = if ($UseNetSecurity) {
+              $r.DisplayName
+          }
+          else {
+              $r.Name
+          }
+
+          $lines += ([pscustomobject]@{
+              timestamp      = $ts
+              host           = $HostName
+              action         = 'unblock_ip'
+              copilot_action = $true
+              type           = 'remove_error'
+              display_name   = $displayName
+              name           = $r.Name
+              error          = $_.Exception.Message
+          } | ConvertTo-Json -Compress -Depth 5)
+      }
+  }
+
+
+  # ----------------------------------------------------------------------
+  # Verify removal
+  # ----------------------------------------------------------------------
+
+  $remaining = @(Find-MatchingBlockRules)
+
+  $lines += ([pscustomobject]@{
       timestamp      = $ts
       host           = $HostName
       action         = 'unblock_ip'
       copilot_action = $true
-      type           = 'match'
-      display_name   = $r.DisplayName
-      name           = $r.Name
-      direction      = "$($r.Direction)"
-      profile        = "$($r.Profile)"
-      enabled        = [bool]$r.Enabled
-      action_effect  = "$($r.Action)"
-    } | ConvertTo-Json -Compress -Depth 6)
-  }
-  $removedOk = 0
-  $removedFail = 0
-  foreach ($r in @($matches)) {
-    try {
-      if ($r.Name) {
-        Remove-NetFirewallRule -Name $r.Name -ErrorAction Stop
-      } else {
-        Remove-NetFirewallRule -DisplayName $r.DisplayName -ErrorAction Stop
-      }
-      $removedOk++
-      $lines += ([pscustomobject]@{
-        timestamp      = $ts
-        host           = $HostName
-        action         = 'unblock_ip'
-        copilot_action = $true
-        type           = 'rule_removed'
-        display_name   = $r.DisplayName
-        name           = $r.Name
-      } | ConvertTo-Json -Compress -Depth 5)
-    } catch {
-      $removedFail++
-      $lines += ([pscustomobject]@{
-        timestamp      = $ts
-        host           = $HostName
-        action         = 'unblock_ip'
-        copilot_action = $true
-        type           = 'remove_error'
-        display_name   = $r.DisplayName
-        name           = $r.Name
-        error          = $_.Exception.Message
-      } | ConvertTo-Json -Compress -Depth 5)
-    }
-  }
-
-  $remaining = @()
-  foreach ($n in $candidateNames) {
-    $rr = Get-NetFirewallRule -DisplayName $n -ErrorAction SilentlyContinue
-    if ($rr) { $remaining += $rr }
-  }
-  $allRules2 = Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Action -eq 'Block' }
-  foreach ($r2 in @($allRules2)) {
-    try {
-      $afs2 = @( Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $r2 -ErrorAction SilentlyContinue )
-      if (-not $afs2) { continue }
-      $addrList2 = @()
-      foreach ($af2 in $afs2) {
-        if ($af2.RemoteAddress) { $addrList2 += @($af2.RemoteAddress) }
-        if ($af2.LocalAddress)  { $addrList2 += @($af2.LocalAddress)  }
-      }
-      if ($addrList2 -contains $TargetIP) { $remaining += $r2 }
-    } catch { }
-  }
-  $remMap = @{}
-  foreach ($r3 in $remaining) { if ($r3 -and -not $remMap.ContainsKey($r3.Name)) { $remMap[$r3.Name] = $r3 } }
-  $remaining = $remMap.Values
-
-  $lines += ([pscustomobject]@{
-    timestamp      = $ts
-    host           = $HostName
-    action         = 'unblock_ip'
-    copilot_action = $true
-    type           = 'verify_overall'
-    target_ip      = $TargetIP
-    candidates     = $candidateNames
-    matched_rules  = (@($matches) | ForEach-Object { $_.Name })
-    removed_ok     = $removedOk
-    remove_failed  = $removedFail
-    remaining      = (@($remaining) | ForEach-Object { $_.Name })
+      type           = 'verify_overall'
+      target_ip      = $TargetIP
+      candidates     = $candidateNames
+      matched_rules  = (@($matches) | ForEach-Object { $_.Name })
+      removed_ok     = $removedOk
+      remove_failed  = $removedFail
+      remaining      = (@($remaining) | ForEach-Object { $_.Name })
   } | ConvertTo-Json -Compress -Depth 6)
 
   $status =
